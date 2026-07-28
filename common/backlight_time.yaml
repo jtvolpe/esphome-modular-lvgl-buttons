@@ -29,6 +29,17 @@ substitutions:
   display_backlight_timeout_always_enabled: "false"
   display_backlight_timeout_initial: ".12"
 
+globals:
+  # Set by a device YAML's hard on/off schedule (e.g. an 8am/11pm time:
+  # on_time pair). While true, automatic mode changes below (sunrise/sunset,
+  # the night-hour trigger) will NOT wake the screen — only an explicit
+  # `lvgl.resume` from the schedule, or the user touching the screen, will.
+  # Devices that don't set up a schedule never touch this and it just stays
+  # false, so on_value keeps behaving exactly as before.
+  - id: night_lockout
+    type: bool
+    initial_value: 'false'
+
 sun:
   latitude: !secret latitude
   longitude: !secret longitude
@@ -127,9 +138,18 @@ select:
     initial_option: Day
     on_value:
       then:
-        - lvgl.resume
-        - lvgl.widget.redraw
-        - script.execute: apply_brightness_mode
+        # Skip the resume while a schedule has locked the screen off (e.g.
+        # overnight) — this is what stops sunrise/sunset/night-hour changes
+        # from waking the screen outside the schedule's on-hours. Touching
+        # the screen still wakes it either way, since that goes through
+        # lvgl's own on_resume hook below, not through this select.
+        - if:
+            condition:
+              lambda: 'return !id(night_lockout);'
+            then:
+              - lvgl.resume
+              - lvgl.widget.redraw
+              - script.execute: apply_brightness_mode
 
 script:
   # ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,426 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# BEDROOM PANEL — with a hard on/off screen schedule
+# ═══════════════════════════════════════════════════════════════════════════════
+# A full bedroom device config (flip clock, curtains, lights, charger) that
+# also demonstrates a HARD wake/sleep schedule: screen forced on at 8:00 AM
+# and forced off at 11:00 PM every day, regardless of touch or sun position.
+#
+# ─── How this differs from office-time-out.yaml's idle timeout ────────────────
+# office-time-out.yaml turns the screen off after N minutes of no touch, and
+# wakes it again on the next touch — a soft, activity-based timeout.
+# This file instead pins the screen to two fixed clock times, which needs two
+# extra pieces on top of the `backlight` package (common/backlight_time.yaml):
+#
+#   1. A `time:` block that extends the package's `system_time` and adds two
+#      `on_time` triggers (08:00 → wake, 23:00 → force off).
+#   2. The package's `night_lockout` global (added alongside this example),
+#      which the 23:00 trigger sets and the 08:00 trigger clears. While it's
+#      true, backlight_time.yaml's sunrise/sunset/night-hour mode changes
+#      will NOT wake the screen — only the schedule (or a touch, which still
+#      works via lvgl's own on_resume hook) can.
+#
+# Without the lockout flag, backlight_time.yaml's `sun: on_sunrise:` trigger
+# fires at actual astronomical sunrise (not a fixed hour) and calls
+# `lvgl.resume` on its own — which woke this panel at ~6:55 AM one morning
+# in July instead of 8:00 AM. The lockout closes that gap.
+# ───────────────────────────────────────────────────────────────────────────────
+
+substitutions:
+  # Theme — bedroom uses a blue accent instead of the office's orange
+  text_font: nunito_20
+  button_on_color: "royalblue"
+  button_off_color: "very_dark_gray"
+  icon_on_color: "cornflowerblue"
+  icon_off_color: "gray"
+  label_on_color: "white"
+  label_off_color: "gray"
+
+  # Brightness modes (consumed by common/backlight_time.yaml)
+  display_daytime_brightness: "85%"
+  display_nighttime_brightness: "50%"
+  display_night_hour: "22"        # dim to nighttime brightness at 22:00
+  display_night_minute: "0"
+
+  # Idle timeout (also from backlight_time.yaml) — screen dims/sleeps on
+  # its own after this many minutes of no touch, on top of the hard
+  # 8am/11pm schedule further down. "false" = only applies in Night mode.
+  display_backlight_timeout_always_enabled: "false"
+  display_backlight_timeout_initial: "30"
+
+  bg_color: black
+  screen_width: "480"
+  screen_height: "480"
+
+esphome:
+  name: bedroom-panel
+  friendly_name: Bedroom Panel
+  on_boot:
+    # Runs before the packages' own on_boot handlers (lower priority number
+    # = earlier); pages/loading.yaml's script just needs to exist by then.
+    - priority: 400
+      then:
+        - script.execute: update_loading_page
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+psram:        # required — LVGL's buffers won't fit in internal RAM alone
+logger:
+api:
+  # Needed for Home Assistant's native API to connect; generate your own
+  # key with `esphome secrets` or the ESPHome dashboard, don't reuse this one.
+  encryption:
+    key: "z6UmpB4F3mcbhbuyMBcZ9Lv/JmN8xaWeutyofj0X3aI="
+ota:
+  - platform: esphome
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Fallback hotspot the device broadcasts if it can't join your real WiFi —
+  # useful for reflashing/reconfiguring without a wired connection.
+  ap:
+    ssid: Bedroom Panel Fallback Hotspot
+    password: "LZf2wUfBhelE"
+
+captive_portal:  # serves the WiFi setup page when the fallback AP is active
+
+globals:
+  # Set on_long_press, read (and cleared) on_release below — lets the
+  # clock's long-press-to-turn-off gesture wait for the finger to actually
+  # lift before acting (see the on_release comment further down for why).
+  - id: clock_long_press_pending
+    type: bool
+    initial_value: 'false'
+  # Tracks which way the panel last sent the curtains. The physical group
+  # state can't be trusted to toggle against — the left curtain doesn't
+  # always reach exactly 0% (it can stall around 8%), so the group entity
+  # rarely reports a clean "closed", which made a state-based toggle stick
+  # on one direction.
+  - id: bedroom_curtains_open
+    type: bool
+    initial_value: 'true'
+
+# backlight_time.yaml (included below) calls `script.execute: time_update`
+# every minute from its on_time trigger, so this id has to exist even if
+# there's no clock widget to refresh. Declared empty here; devices with a
+# digital clock label would put the update logic in this lambda instead.
+script:
+  - id: time_update
+    then:
+      - lambda: return;
+
+packages:
+  wifi: !include esphome-modular-lvgl-buttons/common/wifi.yaml
+  ota_screen: !include esphome-modular-lvgl-buttons/common/ota.yaml
+  theme: !include esphome-modular-lvgl-buttons/common/theme/index.yaml
+  sensors: !include esphome-modular-lvgl-buttons/common/sensors_base.yaml
+  # Sun/time-of-day brightness modes, idle timeout, and (as of this example)
+  # the night_lockout global used by the hard schedule below.
+  backlight: !include esphome-modular-lvgl-buttons/common/backlight_time.yaml
+  # Guition ESP32-S3, 4.0", 480x480 — swap for your board (see hardware/*.yaml)
+  hardware: !include esphome-modular-lvgl-buttons/hardware/guition-esp32-s3-4848s040.yaml
+  loading_screen: !include esphome-modular-lvgl-buttons/pages/loading.yaml
+  info_screen: !include esphome-modular-lvgl-buttons/pages/info.yaml
+
+  # Flip clock — the home page. Tapping the clock also jumps to the
+  # buttons page (same effect as swiping), as a backup for imprecise swipes.
+  flip_clock: !include
+    file: esphome-modular-lvgl-buttons/ui/clock/flip_clock.yaml
+    vars:
+      uid: flip_clock
+      page_id: main_page
+      row: 0
+      column: 0
+      row_span: 1
+      column_span: 1
+      font_size: 120
+      click_page: buttons_page
+
+  # Bedroom TV — swap "switch.bedroom_tv" for your real entity_id
+  # (a media_player.* entity also works fine with this tile type).
+  bedroom_tv: !include
+    file: esphome-modular-lvgl-buttons/ui/switch/remote.yaml
+    vars:
+      uid: bedroom_tv
+      entity_id: "switch.bedroom_tv"
+      row: 0
+      column: 0
+      text: "TV"
+      icon: $mdi_television
+      page_id: buttons_page
+
+  # Bedroom Curtains — a combined group (cover.bedroom_curtains) made in
+  # Home Assistant from two separate curtain covers, since there's no
+  # single entity for "the bedroom curtains".
+  # Bedroom Lamp — points at a stand-in switch until a real bedroom lamp
+  # entity exists; swap the entity_id once one is added.
+  bedroom_lamp: !include
+    file: esphome-modular-lvgl-buttons/ui/light/remote.yaml
+    vars:
+      uid: bedroom_lamp
+      entity_id: "switch.bedroom_lamp"
+      row: 1
+      column: 0
+      text: "Lamp"
+      icon: $mdi_lightbulb
+      page_id: buttons_page
+
+  # Bedroom Light
+  bedroom_light: !include
+    file: esphome-modular-lvgl-buttons/ui/light/remote.yaml
+    vars:
+      uid: bedroom_light
+      entity_id: "light.bedroom_light"
+      row: 1
+      column: 1
+      text: "Main Light"
+      icon: $mdi_ceiling_light
+      page_id: buttons_page
+
+  # Phone charger
+  derek_charger: !include
+    file: esphome-modular-lvgl-buttons/ui/switch/remote.yaml
+    vars:
+      uid: derek_charger
+      entity_id: "switch.derek_s_charger"
+      row: 2
+      column: 1
+      text: "Charger"
+      icon: $mdi_cellphone_charging
+      page_id: buttons_page
+
+# ─── Hard on/off screen schedule ────────────────────────────────────────────────
+# Appends to the `system_time` on_time list that backlight_time.yaml already
+# defines (ESPHome packages concatenate lists on !extend), so the existing
+# 22:00 dim trigger and per-minute clock refresh keep working unchanged.
+time:
+  - id: !extend system_time
+    on_time:
+      # 8:00 AM — clear the lockout and wake the screen. lvgl.resume fires
+      # backlight_time.yaml's on_resume trigger, which restores the correct
+      # brightness for the current mode (same as waking it by touch).
+      - seconds: 0
+        minutes: 0
+        hours: 8
+        then:
+          - globals.set:
+              id: night_lockout
+              value: 'false'
+          - lvgl.resume
+      # 11:00 PM — set the lockout and force the screen off. Same actions
+      # as the Screen Off tile below. While locked out, sunrise/sunset/
+      # night-hour mode changes in backlight_time.yaml won't wake the
+      # screen back up — only 8:00 AM or a touch will.
+      - seconds: 0
+        minutes: 0
+        hours: 23
+        then:
+          - globals.set:
+              id: night_lockout
+              value: 'true'
+          - light.turn_off: display_backlight
+          - lvgl.pause:
+              show_snow: true
+
+lvgl:
+  # Recolor the flip clock digits to a calm bedroom blue
+  style_definitions:
+    - id: !extend flip_digit_style
+      text_color: royalblue
+    - id: !extend flip_ampm_style
+      text_color: royalblue
+  pages:
+    # The info_screen page (ESPHome version / MAC / IP / etc.) comes from
+    # the info_screen package. It has to stay defined — sensors_base.yaml
+    # updates its labels directly by ID — but "skip" pulls it out of the
+    # swipe next/previous cycle so it never shows up between clock and
+    # buttons pages.
+    - id: !extend info_screen
+      skip: true
+    # The light tiles' detail pages (opened by long-pressing a light tile)
+    # also get appended to the global page list — skip them too so they
+    # can't be swiped into by accident. Long-press still opens them fine;
+    # "skip" only affects the next/previous swipe cycle.
+    - id: !extend bedroom_lamp_light_page
+      skip: true
+    - id: !extend bedroom_light_light_page
+      skip: true
+    # Long-press the clock face to turn the screen off — same action as
+    # the Screen Off button on the buttons page.
+    - id: !extend main_page
+      widgets:
+        - obj:
+            id: !extend flip_clock
+            on_long_press:
+              then:
+                # Don't act yet — your finger is still down, and pausing
+                # LVGL while a touch is active makes it resume immediately.
+                # Just flag it and act once on_release confirms you've
+                # actually lifted off.
+                - globals.set:
+                    id: clock_long_press_pending
+                    value: 'true'
+            on_release:
+              then:
+                - if:
+                    condition:
+                      lambda: 'return id(clock_long_press_pending);'
+                    then:
+                      - globals.set:
+                          id: clock_long_press_pending
+                          value: 'false'
+                      - light.turn_off: display_backlight
+                      - lvgl.pause:
+                          show_snow: true
+    - id: main_page
+      layout: 1x1
+      styles: page_style
+      <<: !include esphome-modular-lvgl-buttons/common/swipe_navigation.yaml
+    - id: buttons_page
+      layout: 3x2
+      styles: page_style
+      <<: !include esphome-modular-lvgl-buttons/common/swipe_navigation.yaml
+      widgets:
+        # Bedroom Curtains — a combined HA group (cover.bedroom_curtains)
+        # covering both the left and right curtain covers. Short tap
+        # toggles open/closed, long-press stops mid-travel.
+        - container:
+            id: bedroom_curtains_tile
+            grid_cell_row_pos: 0
+            grid_cell_column_pos: 1
+            grid_cell_row_span: 1
+            grid_cell_column_span: 1
+            grid_cell_x_align: stretch
+            grid_cell_y_align: stretch
+            widgets:
+              - button:
+                  id: button_bedroom_curtains
+                  widgets:
+                    - label:
+                        id: icon_bedroom_curtains
+                        text_font: $icon_font
+                        align: top_left
+                        text: $mdi_blinds
+                    - label:
+                        id: label_bedroom_curtains
+                        align: bottom_left
+                        long_mode: wrap
+                        width: 100%
+                        text: "Bedroom Curtains"
+                  on_short_click:
+                    then:
+                      # Use the dedicated scripts (they stagger the two
+                      # curtains 5s apart) rather than a plain cover.toggle.
+                      # Toggle direction is tracked locally (bedroom_curtains_open)
+                      # rather than read from the group's real state, since the
+                      # left curtain doesn't reliably report a clean "closed".
+                      - if:
+                          condition:
+                            lambda: 'return id(bedroom_curtains_open);'
+                          then:
+                            - globals.set:
+                                id: bedroom_curtains_open
+                                value: 'false'
+                            - homeassistant.action:
+                                action: script.turn_on
+                                data:
+                                  entity_id: script.close_the_curtains
+                          else:
+                            - globals.set:
+                                id: bedroom_curtains_open
+                                value: 'true'
+                            - homeassistant.action:
+                                action: script.turn_on
+                                data:
+                                  entity_id: script.open_curtains
+                  on_long_press:
+                    then:
+                      - homeassistant.action:
+                          action: cover.stop_cover
+                          data:
+                            entity_id: cover.bedroom_curtains
+        # Screen Off — turns off the panel's own backlight (local ESPHome
+        # light, not an HA entity) and pauses LVGL, same as the automatic
+        # idle timeout in backlight_time.yaml. Tap the screen to wake it.
+        - container:
+            id: screen_off_tile
+            grid_cell_row_pos: 2
+            grid_cell_column_pos: 0
+            grid_cell_row_span: 1
+            grid_cell_column_span: 1
+            grid_cell_x_align: stretch
+            grid_cell_y_align: stretch
+            widgets:
+              - button:
+                  id: button_screen_off
+                  widgets:
+                    - label:
+                        id: icon_screen_off
+                        text_font: $icon_font
+                        align: top_left
+                        text: $mdi_monitor_off
+                    - label:
+                        id: label_screen_off
+                        align: bottom_left
+                        long_mode: wrap
+                        width: 100%
+                        text: "Screen Off"
+                  on_short_click:
+                    then:
+                      - light.turn_off: display_backlight
+                      - lvgl.pause:
+                          show_snow: true
+
+# Bedroom Curtains tile coloring — reflects cover.bedroom_curtains state
+text_sensor:
+  - platform: homeassistant
+    id: ha_state_bedroom_curtains
+    entity_id: cover.bedroom_curtains
+    internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: 'return x == "closed";'
+          then:
+            - lvgl.widget.update:
+                id: button_bedroom_curtains
+                bg_color: $button_off_color
+            - lvgl.widget.update:
+                id: icon_bedroom_curtains
+                text_color: $icon_off_color
+            - lvgl.widget.update:
+                id: label_bedroom_curtains
+                text_color: $label_off_color
+          else:
+            - lvgl.widget.update:
+                id: button_bedroom_curtains
+                bg_color: $button_on_color
+            - lvgl.widget.update:
+                id: icon_bedroom_curtains
+                text_color: $icon_on_color
+            - lvgl.widget.update:
+                id: label_bedroom_curtains
+                text_color: $label_on_color
+
+# Every icon used by a tile above must also be listed as a glyph here, or
+# it renders as a blank square — add new ones as you add tiles.
+font:
+  - file: "https://github.com/Templarian/MaterialDesign-Webfont/raw/v7.4.47/fonts/materialdesignicons-webfont.ttf"
+    id: mdi_icons_40
+    size: 40
+    bpp: 8
+    glyphs:
+      - $mdi_television
+      - $mdi_monitor_off
+      - $mdi_cellphone_charging
+      - $mdi_blinds
+      - $mdi_ceiling_light
+      # Required by the light tiles' detail pages (Bedroom Lamp / Bedroom Light)
+      - $mdi_brightness_6
+      - $mdi_chevron_up
+      - $mdi_circle_opacity
+      - $mdi_eyedropper
+      - $mdi_lightbulb
