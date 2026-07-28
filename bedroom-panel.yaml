@@ -72,7 +72,7 @@ api:
   # Needed for Home Assistant's native API to connect; generate your own
   # key with `esphome secrets` or the ESPHome dashboard, don't reuse this one.
   encryption:
-    key: "z6UmpB4F3mcbhbuyMBcZ9Lv/JmN8xaWeutyofj0X3aI="
+    key: "key...."
 ota:
   - platform: esphome
 
@@ -83,7 +83,7 @@ wifi:
   # useful for reflashing/reconfiguring without a wired connection.
   ap:
     ssid: Bedroom Panel Fallback Hotspot
-    password: "LZf2wUfBhelE"
+    password: "password111"
 
 captive_portal:  # serves the WiFi setup page when the fallback AP is active
 
