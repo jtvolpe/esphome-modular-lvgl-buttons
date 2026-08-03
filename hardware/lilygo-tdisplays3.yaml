@@ -9,9 +9,9 @@ esphome:
     build_unflags: -Werror=all
     board_build.flash_mode: dio
 
-external_components:
-  - source: github://clydebarrow/esphome@i8080
-    components: [i80, io_bus, ili9xxx, spi]
+# external_components:
+#   - source: github://clydebarrow/esphome@i8080
+#     components: [i80, io_bus, ili9xxx, spi]
 
 esp32:
   board: esp32-s3-devkitc-1

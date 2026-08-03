@@ -1,0 +1,169 @@
+---
+# Waveshare ESP32-S3 Touch LCD 4" hardware configuration file
+# https://www.waveshare.com/wiki/ESP32-S3-Touch-LCD-4
+
+esphome:
+  min_version: 2026.4.0
+  project:
+    name: "Waveshare.ESP32-S3-touch-lcd-2.8"
+    version: "1.0"
+  platformio_options:
+    board_build.flash_mode: dio
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      execute_from_psram: true
+
+preferences:
+  flash_write_interval: 5min
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+i2c:
+  - id: i2c_touch
+    sda: GPIO1
+    scl: GPIO3
+    frequency: 400kHz
+    scan: true
+
+# pca9554:
+#   id: expander
+
+# touchscreen:
+#   platform: gt911
+#   i2c_id: bus_a
+#   id: my_touchscreen
+#   reset_pin:
+#     pca9554: expander
+#     number: 0
+#   interrupt_pin: 16
+
+touchscreen:
+  - platform: cst328
+    id: my_touchscreen
+    display: my_display # Links to your existing display ID
+    address: 0x1A
+    i2c_id: i2c_touch
+    interrupt_pin: GPIO4
+
+# light:
+#   - platform: monochromatic
+#     output: backlight_output
+#     id: display_backlight
+#     restore_mode: ALWAYS_ON
+#     default_transition_length: 4s
+#     gamma_correct: 1.8
+
+# switch:
+#   - platform: gpio
+#     id: buzzer
+#     pin:
+#       pca9554: expander
+#       number: 5
+#       mode:
+#         output: true
+
+# output:
+#   - platform: ledc
+#     id: backlight_output
+#     pin: GPIO5
+#     # frequency: 1220Hz
+#     # inverted: true
+#     # min_power: 15%
+
+spi:
+  - id: lcd_spi
+    clk_pin: GPIO40
+    mosi_pin: GPIO45
+    miso_pin: GPIO46
+
+
+# display:
+#   platform: st7789v
+#   id: my_display
+#   update_interval: never
+#   auto_clear_enabled: false
+#   data_rate: 2MHz
+#   spi_mode: MODE3
+#   color_order: BGR
+#   invert_colors: true
+#   dimensions:
+#     width: 240
+#     height: 320
+#   transform:
+#     mirror_x: false
+#     mirror_y: false
+#   cs_pin: GPIO5
+#   dc_pin: GPIO16
+#   hsync_pin: GPIO38
+#   vsync_pin: GPIO39
+#   pclk_pin: GPIO41
+#   pclk_frequency: 12MHz
+#   pclk_inverted: false
+#   data_pins:
+#     red:
+#       - GPIO46       #r1
+#       - GPIO3        #r2
+#       - GPIO8        #r3
+#       - GPIO18       #r4
+#       - GPIO17       #r5
+#     green:
+#       - GPIO14       #g0
+#       - GPIO13       #g1
+#       - GPIO12       #g2
+#       - GPIO11       #g3
+#       - GPIO10       #g4
+#       - GPIO9        #g5
+#     blue:
+#       - GPIO5        #b1
+#       - GPIO45       #b2
+#       - GPIO48       #b3
+#       - GPIO47       #b4
+#       - GPIO21       #b5`
+
+# Special LVGL settings required for this display
+lvgl:
+  rotation: ${rotation | default("0")}
+
+# Backlight control is required on GPIO5 to light up the display panel
+output:
+  - platform: ledc
+    id: backlight_output
+    pin: GPIO5
+
+light:
+  - platform: monochromatic
+    output: backlight_output
+    name: "Display Backlight"
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+
+# Core display parameters mapped to internal board connections
+display:
+  - platform: st7789v
+    id: my_display
+    model: "240x320"
+    cs_pin: GPIO42
+    dc_pin: GPIO41
+    reset_pin: GPIO39
+    spi_mode: 3
+    # Waveshare's screen architecture requires color inversion for correct hex mapping
+    invert_colors: true
+    rotation: 90°
+    lambda: |-
+      it.fill(Color::BLACK);
+      it.print(160, 120, id(my_font), Color::WHITE, TextAlign::CENTER, "Waveshare 2.8 Initialized!");
+
+# Necessary dependencies for basic operation
+font:
+  - file: "gfonts://Roboto"
+    id: my_font
+    size: 24
+
