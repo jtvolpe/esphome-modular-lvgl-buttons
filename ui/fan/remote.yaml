@@ -1,0 +1,158 @@
+---
+# Remote fan button — full speed / direction UI for Home Assistant fans
+# Capabilities are detected at runtime from the HA supported_features attribute.
+#
+# vars:
+#   uid:          unique identifier
+#   entity_id:    HA Ceiling Fan entity (e.g. "fan.kitchen")
+#   row:          grid row position
+#   column:       grid column position
+#   text:         label text
+#   icon:         icon glyph (optional, default: $mdi_fan)
+#   row_span:     (default: 1)
+#   column_span:  (default: 1)
+#   page_id:      parent page (default: main_page)
+
+packages:
+  ${uid}_detail: !include
+    file: detail.yaml
+    vars:
+      uid: ${uid}
+      text: ${text}
+      page_id: ${page_id | default("main_page")}
+
+lvgl:
+  pages:
+  - id: !extend ${page_id | default("main_page")}
+    widgets:
+    - container:
+        id: ${uid}_tile
+        grid_cell_row_pos: ${row}
+        grid_cell_column_pos: ${column}
+        grid_cell_row_span: ${row_span | default(1)}
+        grid_cell_column_span: ${column_span | default(1)}
+        grid_cell_x_align: stretch
+        grid_cell_y_align: stretch
+        widgets:
+        - button:
+            id: button_${uid}
+            widgets:
+            - label:
+                id: icon_${uid}
+                text_font: $icon_font
+                align: top_left
+                text: ${icon}
+                on_short_click:
+                  then:
+                  - script.execute: ${uid}_fan_toggle
+            - label:
+                id: label_${uid}
+                align: bottom_left
+                long_mode: wrap
+                width: 100%
+                text: ${text}
+            - slider:
+                id: slider_${uid}
+                align: center
+                x: -5
+                y: 10
+                width: 30%
+                height: 75%
+                min_value: 0
+                max_value: 100
+                radius: 10
+                knob:
+                  pad_top: -5
+                  pad_bottom: -5
+                  bg_color: $label_on_color
+                indicator:
+                  radius: 0
+                  bg_color: $label_off_color
+                on_release:
+                  - lambda: |-
+                      float step = id(${uid}_percentage_step);
+                      if (step <= 0.0f) step = 1.0f;
+                      float quant = (int)((x / step) + 0.5f) * step;
+                      id(${uid}_percentage) = quant;
+                  - lvgl.slider.update:
+                      id: slider_${uid}
+                      value: !lambda return id(${uid}_percentage);
+                  - script.execute: ${uid}_fan_set_speed
+                  # - lambda: !lambda ESP_LOGD("panel", "speed %f%%", id(${uid}_percentage));
+
+# ── HA state sensors ──────────────────────────────────────────────────────────
+
+binary_sensor:
+- id: ${uid}_ha_state
+  platform: homeassistant
+  entity_id: ${entity_id}
+  # trigger_on_initial_state: true
+  publish_initial_state: true
+  on_state:
+  - lambda: id(${uid}_state) = x;
+  - script.execute: ${uid}_sync_state
+
+text_sensor:
+  - id: ${uid}_ha_percentage
+    platform: homeassistant
+    entity_id: ${entity_id}
+    attribute: percentage
+    internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: return !x.empty() && x != "None";
+          then:
+            - lambda: id(${uid}_percentage) = atof(x.c_str());
+            - lvgl.slider.update:
+                id: slider_${uid}
+                value: !lambda return id(${uid}_percentage);
+
+  - id: ${uid}_ha_percentage_step
+    platform: homeassistant
+    entity_id: ${entity_id}
+    attribute: percentage_step
+    internal: true
+    on_value:
+      - if:
+          condition:
+            lambda: return !x.empty() && x != "None";
+          then:
+            - lambda: id(${uid}_percentage_step) = atof(x.c_str());
+            - lvgl.slider.update:
+                id: slider_${uid}
+                value: !lambda return id(${uid}_percentage_step);
+            # - lambda: !lambda ESP_LOGD("panel", "Step %f%%", id(${uid}_percentage_step));
+
+# Supported features → detect capabilities and update UI visibility
+
+script:
+# ── Abstract action scripts — REMOTE implementation ───────────────────────────
+
+- id: ${uid}_fan_set_speed
+  then:
+  - homeassistant.service:
+      service: fan.set_percentage
+      data:
+        entity_id: ${entity_id}
+        percentage: !lambda return (int)(id(${uid}_percentage));
+  # - lambda: !lambda ESP_LOGD("panel", "speed %f%%", id(${uid}_percentage));
+
+- id: ${uid}_fan_toggle
+  then:
+  - if:
+      condition:
+        lambda: return id(${uid}_state);
+      then:
+        - homeassistant.service:
+            service: fan.turn_off
+            data:
+              entity_id: ${entity_id}
+        - script.execute: ${uid}_button_off
+      else:
+        - homeassistant.service:
+            service: fan.turn_on
+            data:
+              entity_id: ${entity_id}
+        - script.execute: ${uid}_button_on
+
