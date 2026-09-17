@@ -48,16 +48,16 @@ lvgl:
             - label:
                 id: label_${uid}
                 align: bottom_left
-                long_mode: wrap
+                long_mode: CLIP
                 width: 100%
                 text: ${text}
             - slider:
                 id: slider_${uid}
-                align: center
+                align: right_mid
                 x: -5
                 y: 10
                 width: 30%
-                height: 75%
+                height: 70%
                 min_value: 0
                 max_value: 100
                 radius: 10
