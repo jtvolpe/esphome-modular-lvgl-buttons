@@ -1,0 +1,104 @@
+# 2.8" Rectangular Waveshare ESP32-S3 Touch LCD
+# https://www.waveshare.com/esp32-s3-touch-lcd-2.8.htm
+#
+# Hardware configuration file
+---
+
+substitutions:
+  # Screen Size
+  screen_height: 320
+  screen_width: 240
+
+esphome:
+  min_version: 2026.4.0
+  project:
+    name: "Waveshare.ESP32-S3-touch-lcd-2_8"
+    version: "1.0"
+
+esp32:
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    advanced:
+      execute_from_psram: true
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+preferences:
+  flash_write_interval: 5min
+
+# Backlight PWM output and light component
+output:
+  # Backlight LED
+  - platform: ledc
+    id: gpio_backlight_pwm
+    pin: GPIO05
+    frequency: 2000Hz
+    channel: 0
+
+light:
+  - platform: monochromatic
+    output: gpio_backlight_pwm
+    name: Display Backlight
+    icon: mdi:lightbulb-on
+    id: display_backlight
+    restore_mode: ALWAYS_ON
+    gamma_correct: 1
+
+# -------------------------------------------
+# Touchscreen GT911 i2c
+# -------------------------------------------
+i2c:
+  - id: bus_a
+    sda: GPIO1
+    scl: GPIO3
+    scan: true
+
+touchscreen:
+  - platform: cst328
+    id: my_touchscreen
+    i2c_id: bus_a
+    reset_pin: GPIO02
+    interrupt_pin: GPIO04
+    # on_update:
+    #   - lvgl.label.update:
+    #       id: coord_text
+    #       text: !lambda return str_sprintf("Touch points:\n id=%d x=%d, y=%d", touches[0].id, touches[0].x, touches[0].y);
+    #   - lambda: |-
+    #       for (auto touch: touches)  {
+    #           if (touch.state <= 2) {
+    #             ESP_LOGI("Touch points:", "id=%d x=%d, y=%d", touch.id, touch.x, touch.y);
+    #           }
+    #       }
+
+# -------------------------------------------
+# SPI-based 240x320 Waveshare 2.8" display (ST7789)
+# -------------------------------------------
+spi:
+  - id: lcd_spi
+    clk_pin: GPIO40
+    mosi_pin: GPIO45
+    miso_pin: GPIO46
+
+# Core display parameters mapped to internal board connections
+display:
+  - platform: mipi_spi
+    id: my_display
+    model: ST7789V
+    cs_pin: GPIO42
+    dc_pin: GPIO41
+    reset_pin: GPIO39
+    spi_id: lcd_spi
+    invert_colors: true
+
+# Special LVGL settings required for this display
+lvgl:
+  rotation: ${rotation | default("0")}
+
+font:
+  - file: "gfonts://Roboto"
+    id: my_font
+    size: 24
