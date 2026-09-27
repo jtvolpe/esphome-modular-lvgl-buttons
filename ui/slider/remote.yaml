@@ -1,0 +1,36 @@
+# Remote slider tile — triggers a Home Assistant button (or script/scene/input_button) on press.
+# Simple type: tile-only, no detail page, no state.
+#
+# vars:
+#   uid:          unique identifier
+#   entity_id:    HA entity, e.g. "button.restart", "script.good_night", "scene.movie_mode"
+#   row:          grid row
+#   column:       grid column
+#   text:         tile label
+#   icon:         icon glyph
+#   row_span:     (default: 1)
+#   column_span:  (default: 1)
+#   page_id:      parent page (default: main_page)
+
+- slider:
+    align: CENTER
+    id: slider_id
+    value: 75
+    min_value: 0
+    max_value: 100
+
+# Example action:
+on_...:
+  - lvgl.slider.update:
+      id: slider_id
+      knob:
+        bg_color: 0x00FF00
+      value: 55
+
+# Example trigger:
+- slider:
+    ...
+    on_value:
+      - logger.log:
+          format: "Slider value is: %.0f"
+          args: [ 'x' ]

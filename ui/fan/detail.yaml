@@ -1,0 +1,118 @@
+---
+# Shared light detail page — RGB / CCT / brightness UI
+# Calls abstract scripts defined by the button that includes this page.
+# Works identically for both local ESPHome lights and remote HA lights.
+#
+# vars:
+#   uid:      must match the including button's uid
+#   text:     light name shown on the detail page header
+#   page_id:  parent page to return to (default: main_page)
+#
+# Scripts the button MUST define:
+#   ${uid}_light_toggle           — toggle the light on/off
+#   ${uid}_light_set_brightness   — apply id(${uid}_current_brightness) [0.0–1.0]
+#   ${uid}_light_apply_hs         — apply id(${uid}_current_hue) [0–360] + id(${uid}_current_saturation) [0–100]
+#   ${uid}_light_apply_color_temp — apply id(${uid}_current_color_temp) [Kelvin]
+#
+# Globals the button MUST keep up-to-date:
+#   ${uid}_state              bool
+#   ${uid}_percentage         float  0.0–100.0
+#   ${uid}_percentage_step    float  0.0–100.0
+
+globals:
+- id: ${uid}_percentage
+  type: float
+  initial_value: '0.0'
+
+- id: ${uid}_percentage_step
+  type: float
+  initial_value: '10.0'
+
+- id: ${uid}_state
+  type: bool
+  initial_value: 'false'
+
+lvgl:
+  gradients:
+  - id: ${uid}_hue_gradient
+    direction: ver
+    stops:
+    - color: 0xff0000
+      position: 0
+    - color: 0xff00ff
+      position: 42
+    - color: 0x0000ff
+      position: 84
+    - color: 0x00ffff
+      position: 127
+    - color: 0x00ff00
+      position: 169
+    - color: 0xffff00
+      position: 212
+    - color: 0xff0000
+      position: 255
+
+  - id: ${uid}_color_temp_gradient
+    direction: ver
+    stops:
+    - color: 0xa0c8ff
+      position: 0
+    - color: 0xe0f7ff
+      position: 80
+    - color: 0xffffff
+      position: 128
+    - color: 0xffffe0
+      position: 175
+    - color: 0xffd6a0
+      position: 255
+
+script:
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sync globals → LVGL widgets (called after any state change)
+# ═══════════════════════════════════════════════════════════════════════════════
+- id: ${uid}_sync_state
+  then:
+  # Update grid button appearance
+  - if:
+      condition:
+        lambda: return id(${uid}_state);
+      then:
+        - script.execute: ${uid}_button_on
+      else:
+        - script.execute: ${uid}_button_off
+    # Sync grid speed slider
+  - lvgl.slider.update:
+      id: slider_${uid}
+      value: !lambda return id(${uid}_percentage);
+
+- id: ${uid}_button_on
+  then:
+    - lvgl.widget.update:
+        id: button_${uid}
+        bg_color: $button_on_color
+    - lvgl.widget.update:
+        id: icon_${uid}
+        text_color: $icon_on_color
+    - lvgl.widget.update:
+        id: label_${uid}
+        text_color: $label_on_color
+    - lvgl.widget.update:
+        id: slider_${uid}
+        knob:
+          bg_color: $label_on_color
+
+- id: ${uid}_button_off
+  then:
+    - lvgl.widget.update:
+        id: button_${uid}
+        bg_color: $button_off_color
+    - lvgl.widget.update:
+        id: icon_${uid}
+        text_color: $icon_off_color
+    - lvgl.widget.update:
+        id: label_${uid}
+        text_color: $label_off_color
+    - lvgl.widget.update:
+        id: slider_${uid}
+        knob:
+          bg_color: $label_off_color
