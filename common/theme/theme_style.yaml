@@ -67,6 +67,12 @@ lvgl:
       text_color: $label_on_color
       align: center
 
+    - id: time_style1
+      scrollbar_mode: "OFF"
+      text_font: $text_font1
+      text_color: $label_on_color
+      align: center
+
 select:
   - platform: template
     name: "Current Theme"

@@ -30,7 +30,7 @@ lvgl:
                   widgets:
                     - label:
                         id: time_label
-                        styles: time_style
+                        styles: time_style1
                         text: '12:00 pm'
 
                   on_short_click:
